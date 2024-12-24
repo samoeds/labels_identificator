@@ -9,44 +9,23 @@ from torchvision import transforms
 import PIL
 from PIL import Image
 import cv2
+import pytesseract
 
-Labels = {0: 'A',
-          1: 'B',
-          2: 'C',
-          3: 'D',
-          4: 'E',
-          5: 'F',
-          6: 'G',
-          7: 'H',
-          8: 'I',
-          9: 'K',
-          10: 'L',
-          11: 'M',
-          12: 'N',
-          13: 'O',
-          14: 'P',
-          15: 'Q',
-          16: 'R',
-          17: 'S',
-          18: 'T',
-          19: 'U',
-          20: 'V',
-          21: 'W',
-          22: 'X',
-          23: 'Y'
-          }
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+print(pytesseract.__version__)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-model = CRNN()
-
-# Загрузка весов
-state_dict = torch.load("crnn_synth90k.pt", map_location=device, weights_only=True) # Load model to CPU
-
-# Загрузка весов в модель
-model.load_state_dict(state_dict, strict=False)
-model = model.to(device) # set where to run the model and matrix calculation
-model.eval()
+#
+# model = CRNN()
+#
+# # Загрузка весов
+# state_dict = torch.load("crnn_synth90k.pt", map_location=device, weights_only=True) # Load model to CPU
+#
+# # Загрузка весов в модель
+# model.load_state_dict(state_dict, strict=False)
+# model = model.to(device) # set where to run the model and matrix calculation
+# model.eval()
 
 # Preprocess the inputted frame
 
@@ -75,26 +54,13 @@ def preprocess(image):
     return image  # dimension out of our 3-D vector Tensor
 
 
-def argmax(prediction):
-    # Convert tensor to NumPy array
-    prediction = prediction.cpu().detach().numpy()
+def recognize_text(image):
+    # to gray
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Get the index of the max logit along the class axis
-    top_1 = np.argmax(prediction, axis=1)
-
-    # Ensure that top_1 is a 1D array and extract the first element
-    if isinstance(top_1, np.ndarray):
-        prediction_index = int(top_1.flat[0])  # Use flat indexing to ensure scalar extraction
-    else:
-        prediction_index = int(top_1)
-
-    # Get the score (maximum logit value)
-    score = float(np.max(prediction))
-
-    # Map the index to the corresponding label
-    result = Labels[prediction_index]
-    return result, score
-
+    # tesseract to extract text
+    text = pytesseract.image_to_string(gray, lang="eng")  # ENG
+    return text
 
 
 # Webcam setup
@@ -115,20 +81,28 @@ while True:
 
     if fps_counter % 5 == 0:  # Process every 5th frame
         cropped_frame = frame[100:450, 150:570]  # Adjust cropping as needed
-        input_tensor = preprocess(cropped_frame)
-        with torch.no_grad():
-            prediction = model(input_tensor)
-        result, score = argmax(prediction)
-        show_result = result
-        show_score = score
+        # input_tensor = preprocess(cropped_frame)
+        # Text recognise
+        text = recognize_text(cropped_frame)
+
+        # with torch.no_grad():
+        #     prediction = model(input_tensor)
+        # result, score = argmax(prediction)
+        # show_result = result
+        # show_score = score
 
     fps_counter += 1
-    cv2.putText(frame, f'{show_result} (score={show_score:.2f})', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    cv2.putText(frame, f'Text: {text}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                (255, 255, 255), 2)
+    print(text)
+
+    # cv2.putText(frame, f'{show_result} (score={show_score:.2f})', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
     cv2.rectangle(frame, (150, 100), (570, 450), (255, 0, 0), 2)  # Visualization of cropped area
-    cv2.imshow("ASL SIGN DETECTOR", frame)
+    cv2.imshow("Text detector", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
+
 
 cam.release()
 cv2.destroyAllWindows()
